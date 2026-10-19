@@ -1,0 +1,14 @@
+# Customer and LinkedIn data must never be committed (this repository is public).
+data/
+output/
+*.xlsx
+*.xls
+*.csv
+!templates/*.csv
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+~$*
