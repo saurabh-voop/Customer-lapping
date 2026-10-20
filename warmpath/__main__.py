@@ -13,8 +13,9 @@ import pandas as pd
 
 from .connections import load_folder
 from .customers import load_customers
-from .paths import PathFinder
-from .report import best_per_company, connector_overlap, manual_check_queue, write_workbook
+from .directors import DirectorGraph, load_directors
+from .paths import PathFinder, insider_factor, tie_factor
+from .report import PERSON_PATHS, best_per_company, connector_overlap, write_workbook
 
 
 def _optional_csv(path):
@@ -22,7 +23,7 @@ def _optional_csv(path):
     return pd.read_csv(path, dtype=str).fillna("") if path.is_file() else None
 
 
-def run(data_dir, out_dir, top_n_checks=150, log=print):
+def run(data_dir, out_dir, log=print):
     data_dir, out_dir = Path(data_dir), Path(out_dir)
     started = time.time()
     team = load_folder(data_dir / "connections")
@@ -39,17 +40,31 @@ def run(data_dir, out_dir, top_n_checks=150, log=print):
     log(f"Targets: {len(targets):,} records across {targets.company_key.nunique():,} companies")
 
     finder = PathFinder(team, introducers,
-                        relationships=_optional_csv(data_dir / "relationships.csv"),
-                        mutual_checks=_optional_csv(data_dir / "mutual_checks.csv"))
+                        relationships=_optional_csv(data_dir / "relationships.csv"))
     rows = []
     for target in targets.to_dict("records"):
         rows.extend(finder.paths_for(target))
-    rows.extend(finder.verified_paths(targets))
+
+    board_coverage = pd.DataFrame()
+    if (data_dir / "directors.csv").is_file():
+        directors = load_directors(data_dir / "directors.csv")
+        graph = DirectorGraph(directors, team)
+        log(f"Director records: {len(directors):,} across {directors.company_key.nunique():,} companies")
+        coverage = []
+        for target in targets.drop_duplicates("company_key").to_dict("records"):
+            boards = graph.boards_for(target["company_key"], target["company_core"])
+            coverage.append({"company": target["company"], "source": target["source"],
+                             "director_data": "yes" if boards else "no",
+                             "directors": ", ".join(sorted({graph.d.at[i, "director"] for b in boards
+                                                            for i in graph.board[b]}))})
+            if boards:
+                rows.extend(graph.paths_for_company(target, PathFinder._row, insider_factor, tie_factor))
+        board_coverage = pd.DataFrame(coverage).sort_values("director_data", ascending=False)
     paths = pd.DataFrame(rows)
     if not paths.empty:
         paths = (paths.sort_values("score", ascending=False)
-                 .drop_duplicates(["target_id", "path_type", "ask_team_member", "via_introducer",
-                                   "via_colleague", "target_linkedin"]))
+                 .drop_duplicates(["target_id", "target_person", "path_type", "ask_team_member",
+                                   "via_introducer", "via_colleague", "target_linkedin"]))
 
     best = best_per_company(paths, targets)
     summary = (best.groupby(["best_path", "degree"]).size().rename("companies").reset_index()
@@ -60,7 +75,7 @@ def run(data_dir, out_dir, top_n_checks=150, log=print):
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f"warm_paths_{date.today():%Y-%m-%d}.xlsx"
-    person_paths = paths[paths.path_type.isin(["DIRECT", "VERIFIED", "INTRODUCER"])] if not paths.empty else paths
+    person_paths = paths[paths.path_type.isin(PERSON_PATHS)] if not paths.empty else paths
     write_workbook(out_file, {
         "Summary": summary,
         "Best path per company": best,
@@ -68,7 +83,7 @@ def run(data_dir, out_dir, top_n_checks=150, log=print):
         "All paths": paths,
         "To review (low confidence)": paths[paths.confidence.str.startswith("Low")] if not paths.empty else paths,
         "Cold companies": best[best.best_path == "COLD"],
-        "Manual LinkedIn checks": manual_check_queue(best, top_n_checks),
+        "Director data coverage": board_coverage,
         "Paths per team member": per_member,
         "Connections (classified)": connections[[
             "layer", "owner", "sector", "tier", "first_name", "last_name", "company", "position",
@@ -85,9 +100,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", default="data", help="input folder (default: data)")
     parser.add_argument("--out", default="output", help="output folder (default: output)")
-    parser.add_argument("--checks", type=int, default=150, help="rows in the manual LinkedIn check list")
     args = parser.parse_args(argv)
-    run(args.data, args.out, args.checks)
+    run(args.data, args.out)
 
 
 if __name__ == "__main__":

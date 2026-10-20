@@ -1,7 +1,9 @@
 """Write the team-facing Excel workbook (filters + frozen headers on every sheet)."""
 import pandas as pd
 
-PATH_RANK = {"DIRECT": 0, "VERIFIED": 1, "INTRODUCER": 2, "INSIDER": 3, "INTRODUCER_INSIDER": 4}
+PATH_RANK = {"DIRECT": 0, "BOARD_DIRECT": 0, "CO_DIRECTOR": 1, "INTRODUCER": 1, "INSIDER": 2,
+             "SISTER_COMPANY": 3, "INTRODUCER_INSIDER": 4}
+PERSON_PATHS = ["DIRECT", "BOARD_DIRECT", "CO_DIRECTOR", "INTRODUCER"]
 
 
 def best_per_company(paths, targets):
@@ -25,6 +27,7 @@ def best_per_company(paths, targets):
         team_members_with_path=("ask_team_member", lambda s: ", ".join(sorted(set(s)))),
         direct_contacts=("path_type", lambda s: int((s == "DIRECT").sum())),
         insiders=("path_type", lambda s: int(s.isin(["INSIDER", "INTRODUCER_INSIDER"]).sum())),
+        board_paths=("path_type", lambda s: int(s.isin(["BOARD_DIRECT", "CO_DIRECTOR", "SISTER_COMPANY"]).sum())),
     ).reset_index()
     out = companies.merge(best, on="company_key", how="left").merge(stats, on="company_key", how="left")
     out["best_path"] = out["best_path"].fillna("COLD")
@@ -39,22 +42,6 @@ def connector_overlap(connections):
     sets = {o: set(connections.loc[connections.owner == o, "slug"].dropna()) for o in owners}
     return pd.DataFrame([[len(sets[a] & sets[b]) for b in owners] for a in owners],
                         index=owners, columns=owners).reset_index().rename(columns={"index": "connections of"})
-
-
-def manual_check_queue(best, top_n):
-    """Companies without a person-level path: ask the team to look them up on LinkedIn."""
-    todo = best[~best["best_path"].isin(["DIRECT", "VERIFIED", "INTRODUCER"])].copy()
-    todo = todo[todo["named_contacts"].astype(str).str.len() > 0].head(top_n)
-    return pd.DataFrame({
-        "target_name": todo["named_contacts"].str.split(", ").str[0],
-        "target_company": todo["company"],
-        "target_linkedin_url": "",
-        "checked_by": "",
-        "degree_shown": "",
-        "mutual_connections": "",
-        "checked_on": "",
-        "current_best_path": todo["best_path"],
-    })
 
 
 def write_workbook(path, sheets):

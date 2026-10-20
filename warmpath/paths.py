@@ -2,13 +2,12 @@
 
 Path types (best first):
   DIRECT          team member is 1st-degree connected to the target person        (1st degree)
-  VERIFIED        team member saw the target as 2nd degree on LinkedIn and named
-                  the mutual connection (data/mutual_checks.csv)                  (2nd degree)
   INTRODUCER      a friend/partner who exported their connections (data/introducers)
                   is 1st-degree connected to the target                           (2nd degree)
   INSIDER         team member is connected to someone else at the target company
                   who can introduce internally ("company bridge")                 (2nd degree, inferred)
   INTRODUCER_INSIDER  introducer knows someone at the target company              (3rd degree, inferred)
+plus the board paths in directors.py (BOARD_DIRECT, CO_DIRECTOR, SISTER_COMPANY).
 """
 from collections import defaultdict
 
@@ -16,11 +15,14 @@ import pandas as pd
 
 from .classify import is_buyer_function, tier_of, tier_rank
 from .match import COMPANY_CONFIDENCE, CompanyIndex, name_similarity
-from .normalize import clean_text, company_key, linkedin_slug, name_tokens, person_key
+from .directors import BASE as DIRECTOR_BASE, DEGREE as DIRECTOR_DEGREE
+from .normalize import clean_text, person_key
 
-BASE_SCORE = {"DIRECT": 100, "VERIFIED": 80, "INTRODUCER": 70, "INSIDER": 55, "INTRODUCER_INSIDER": 30}
-DEGREE = {"DIRECT": "1st", "VERIFIED": "2nd (verified)", "INTRODUCER": "2nd",
-          "INSIDER": "2nd (via colleague)", "INTRODUCER_INSIDER": "3rd (via colleague)"}
+BASE_SCORE = {"DIRECT": 100, "INTRODUCER": 70, "INSIDER": 55, "INTRODUCER_INSIDER": 30}
+DEGREE = {"DIRECT": "1st", "INTRODUCER": "2nd",
+          "INSIDER": "2nd (via colleague)", "INTRODUCER_INSIDER": "3rd (via colleague)",
+          **DIRECTOR_DEGREE}
+BASE_SCORE.update(DIRECTOR_BASE)
 
 
 def tie_factor(years):
@@ -89,7 +91,7 @@ def introducer_links(team, introducers, relationships):
 
 
 class PathFinder:
-    def __init__(self, team, introducers, relationships=None, mutual_checks=None):
+    def __init__(self, team, introducers, relationships=None):
         self.team = team.reset_index(drop=True)
         self.introducers = introducers.reset_index(drop=True)
         self.links = introducer_links(self.team, self.introducers, relationships)
@@ -97,7 +99,6 @@ class PathFinder:
         self.company_index = {name: CompanyIndex(df) for name, df in self.layers.items()}
         self.by_slug = {name: _group(df, "slug") for name, df in self.layers.items()}
         self.by_email = {name: _group(df, "email") for name, df in self.layers.items()}
-        self.mutual_checks = mutual_checks
 
     # -- matching ---------------------------------------------------------------------------
     def _person_hits(self, layer, target, company_matches):
@@ -160,35 +161,6 @@ class PathFinder:
                             out.append(self._row(target, "INTRODUCER_INSIDER", member, c.owner, c, conf,
                                                  f"{how}; {member}-{c.owner}: {known}",
                                                  BASE_SCORE["INTRODUCER_INSIDER"] * base * (0.6 + 0.1 * strength)))
-        return out
-
-    def verified_paths(self, targets):
-        """Rows from data/mutual_checks.csv, attached to the matching target records."""
-        if self.mutual_checks is None or self.mutual_checks.empty:
-            return []
-        index = {}
-        for t in targets.to_dict("records"):
-            index.setdefault((t["company_key"], " ".join(t["person_tokens"])), t)
-            if t["slug"]:
-                index.setdefault(("slug", t["slug"]), t)
-        out = []
-        for rec in self.mutual_checks.to_dict("records"):
-            slug = linkedin_slug(rec.get("target_linkedin_url"))
-            t = index.get(("slug", slug)) if slug else None
-            t = t or index.get((company_key(rec.get("target_company")), " ".join(name_tokens(rec.get("target_name")))))
-            if t is None:
-                continue
-            degree = clean_text(rec.get("degree_shown")).lower()
-            member = clean_text(rec.get("checked_by"))
-            mutuals = [m.strip() for m in clean_text(rec.get("mutual_connections")).split(";") if m.strip()]
-            if degree.startswith("1"):
-                out.append(self._row(t, "DIRECT", member, "", None, 1.0, "confirmed 1st degree on LinkedIn",
-                                     BASE_SCORE["DIRECT"]))
-            elif degree.startswith("2"):
-                for m in mutuals or ["(mutual not named)"]:
-                    out.append(self._row(t, "VERIFIED", member, m, None, 1.0,
-                                         f"LinkedIn shows 2nd degree via {m} (checked {clean_text(rec.get('checked_on'))})",
-                                         BASE_SCORE["VERIFIED"]))
         return out
 
     @staticmethod
