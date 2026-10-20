@@ -77,3 +77,12 @@ def test_clean_place_handles_aliases_and_damaged_names():
     assert clean_place("8 min (2.4 km) via Hitech City Main Rd") == ("", "", "")
     assert clean_place("Moradabad") == ("Moradabad", "", "India")
     assert clean_place("Muzaffargar")[0] == "Muzaffarnagar"
+
+
+def test_field_labels_repair_damaged_headers():
+    from warmpath.customers import field_label
+    assert field_label("NAME OF COMPANY") == "Name of company"
+    assert field_label("ME OF COMPANY") == "Name of company"
+    assert field_label("CONTACT PERSON & DESIGTION") == "Contact person & designation"
+    assert field_label("Shipper me") == "Shipper name"
+    assert field_label("#") == ""

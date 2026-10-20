@@ -79,7 +79,44 @@ def _focus_grid(raw, source, sheet):
             name = clean_text(raw.iat[r, c])
             if name and not name.replace(".", "").isdigit():
                 out.append({"source": source, "sheet": sheet, "row": r + 1, "company": name,
-                            "location": city})
+                            "location": city, "fields": [("Focus city", city)]})
+    return out
+
+
+# Header text damaged in the source sheets ("NA" deleted) or abbreviated, as whole words.
+LABEL_FIXES = [(r"\bdesigtion\b", "designation"), (r"^me of company\b", "name of company"),
+               (r"\bshipper me\b", "shipper name"), (r"\bconsignee me\b", "consignee name"),
+               (r"\bout-coome\b", "outcome"), (r"\bdestition\b", "destination")]
+
+
+def field_label(value):
+    """Readable column label: 'CONTACT PERSON & DESIGTION' -> 'Contact person & designation'."""
+    text = re.sub(r"\s+", " ", clean_text(value).replace("\n", " ")).strip()
+    if not text or text == "#" or text.lower().startswith("unnamed"):
+        return ""
+    low = text.lower()
+    for bad, good in LABEL_FIXES:
+        low = re.sub(bad, good, low)
+    return low[:1].upper() + low[1:]
+
+
+def field_value(value):
+    text = clean_text(value)
+    if text.endswith(" 00:00:00"):            # Excel dates read as text
+        text = text[:-9]
+    return text.strip()
+
+
+def load_records(folder):
+    """Every source row with all its columns: [{company_key, source, sheet, row, fields}]."""
+    out = []
+    folder = Path(folder)
+    for path in sorted(folder.iterdir()) if folder.is_dir() else []:
+        if path.suffix.lower() not in (".xlsx", ".xls", ".csv") or path.name.startswith(("~$", ".")):
+            continue
+        for rec in load_workbook(path):
+            out.append({"company_key": company_key(rec["company"]), "source": rec["source"],
+                        "sheet": rec["sheet"], "row": rec["row"], "fields": rec.get("fields", [])})
     return out
 
 
@@ -105,6 +142,7 @@ def load_workbook(path):
         header_idx, mapping = _find_header(raw)
         if header_idx is None:
             continue
+        labels = [field_label(v) for v in raw.iloc[header_idx].tolist()]
         for r in range(header_idx + 1, len(raw)):
             row = raw.iloc[r].tolist()
             company = _cell(row, mapping, "company")
@@ -114,6 +152,9 @@ def load_workbook(path):
             for role in ("person", "designation", "email", "phone", "linkedin", "location",
                          "state", "country", "segment", "category", "visited", "status", "owner"):
                 rec[role] = _cell(row, mapping, role)
+            # Every non-empty cell of the row, in sheet order, for the full customer record.
+            rec["fields"] = [(labels[c], field_value(v)) for c, v in enumerate(row)
+                             if c < len(labels) and labels[c] and field_value(v)]
             rows.append(rec)
     return rows
 
@@ -132,7 +173,7 @@ def explode_people(raw_rows):
             if len(people) == 1:
                 emails = emails + base_emails
             out.append({
-                **{k: v for k, v in rec.items() if k not in ("person", "email", "linkedin", "designation")},
+                **{k: v for k, v in rec.items() if k not in ("person", "email", "linkedin", "designation", "fields")},
                 "company_key": company_key(rec["company"]),
                 "company_core": company_core(rec["company"]),
                 "company_aliases": sorted(company_aliases(rec["company"])),
