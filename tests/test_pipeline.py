@@ -94,6 +94,13 @@ def test_pipeline_finds_every_path_type(tmp_path):
     assert not paths["why"].str.contains("Unrelated Textiles").any()
     assert ((paths.company == "Zorbex Infraprojects Limited") & (paths.path_type == "INSIDER")).any()
 
+    import openpyxl
+    sheet = openpyxl.load_workbook(out_file)["Best path per company"]
+    header = [c.value for c in sheet[1]]
+    link = sheet.cell(row=2, column=header.index("linkedin_2nd_degree_search") + 1).hyperlink.target
+    assert link.startswith("https://www.linkedin.com/search/results/people/?keywords=")
+    assert "network=%5B%22S%22%5D" in link
+
     classified = pd.read_excel(out_file, sheet_name="Connections (classified)")
     assert set(classified["owner"]) == {"Alice", "Bob", "Carol"}
     assert "tier" in classified.columns and "sector" in classified.columns
