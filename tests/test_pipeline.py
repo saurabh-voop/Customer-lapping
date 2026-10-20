@@ -35,15 +35,15 @@ def _make_data(tmp_path):
          "General Manager - Projects", "3 Feb 2016"],              # insider via Carol
     ])
     customers = pd.DataFrame([
-        ["", "Customer database", "", ""],
-        ["#", "NAME OF COMPANY", "CONTACT PERSON & DESIGTION", "LOCATION"],
-        ["1", "QUILLAN GENSETS PRIVATE LIMITED", "Mr. Tarun Quillan (MD)\n9820000000", "Pune"],
-        ["2", "Zorbex Infraprojects Limited", "Sameer Dalvi - GM Electrical", "Mumbai"],
-        ["3", "Obers Power Systems", "Nikhil Oberstein, CEO", "Delhi"],
-        ["4", "Ferrolux Energy", "Rakesh Iyer", "Surat"],
-        ["5", "Unreachable Widgets Co", "", "Goa"],
-        ["7", "Nowhere Traders", "", "Agra"],
-        ["6", "Halvorsen Pumps", "Ingrid Halvorsen", "Chennai"],
+        ["", "Customer database", "", "", ""],
+        ["#", "NAME OF COMPANY", "CONTACT PERSON & DESIGTION", "STATE", "LOCATION"],
+        ["1", "QUILLAN GENSETS PRIVATE LIMITED", "Mr. Tarun Quillan (MD)\n9820000000", "Somestate", "Pune"],
+        ["2", "Zorbex Infraprojects Limited", "Sameer Dalvi - GM Electrical", "Somestate", "Mumbai"],
+        ["3", "Obers Power Systems", "Nikhil Oberstein, CEO", "Somestate", "Delhi"],
+        ["4", "Ferrolux Energy", "Rakesh Iyer", "Somestate", "Surat"],
+        ["5", "Unreachable Widgets Co", "", "Somestate", "Goa"],
+        ["7", "Nowhere Traders", "", "Somestate", "Agra"],
+        ["6", "Halvorsen Pumps", "Ingrid Halvorsen", "Somestate", "Chennai"],
     ])
     customers.to_excel(data / "customers" / "prospects.xlsx", sheet_name="1. Data Base", header=False, index=False)
     pd.DataFrame([["Summary only"]]).to_excel(data / "customers" / "ignored_summary.xlsx",
@@ -72,6 +72,10 @@ def test_pipeline_finds_every_path_type(tmp_path):
 
     assert best.loc["QUILLAN GENSETS PRIVATE LIMITED", "best_path"] == "DIRECT"
     assert best.loc["QUILLAN GENSETS PRIVATE LIMITED", "ask_team_member"] == "Bob"
+    # City comes from LOCATION even when a STATE column precedes it.
+    assert best.loc["QUILLAN GENSETS PRIVATE LIMITED", "location"] == "Pune"
+    assert best.loc["QUILLAN GENSETS PRIVATE LIMITED", "city"] == "Pune"
+    assert best.loc["QUILLAN GENSETS PRIVATE LIMITED", "state"] == "Maharashtra"   # unknown state replaced
 
     # Priya works at Zorbex and is on its board.
     assert best.loc["Zorbex Infraprojects Limited", "best_path"] == "BOARD_DIRECT"

@@ -3,6 +3,8 @@ from urllib.parse import quote
 
 import pandas as pd
 
+from .places import clean_place
+
 PATH_RANK = {"DIRECT": 0, "BOARD_DIRECT": 0, "CO_DIRECTOR": 1, "INTRODUCER": 1, "INSIDER": 2,
              "SISTER_COMPANY": 3, "INTRODUCER_INSIDER": 4}
 PERSON_PATHS = ["DIRECT", "BOARD_DIRECT", "CO_DIRECTOR", "INTRODUCER"]
@@ -24,9 +26,16 @@ def best_per_company(paths, targets):
     companies = (targets.groupby("company_key", sort=False)
                  .agg(company=("company", "first"), source=("source", lambda s: "; ".join(sorted(set("; ".join(s).split("; "))))),
                       location=("location", lambda s: next((x for x in s if x), "")),
+                      state=("state", lambda s: next((x for x in s if isinstance(x, str) and x), "")),
+                      country=("country", lambda s: next((x for x in s if isinstance(x, str) and x), "")),
                       segment=("segment", lambda s: next((x for x in s if x), "")),
+                      category=("category", lambda s: next((x for x in s if isinstance(x, str) and x), "")),
                       named_contacts=("person", lambda s: ", ".join([x for x in s if x][:6])))
                  .reset_index())
+    places = [clean_place(*v) for v in zip(companies["location"], companies["state"], companies["country"])]
+    companies["city"] = [c for c, _, _ in places]
+    companies["state"] = [st for _, st, _ in places]
+    companies["country"] = [ct for _, _, ct in places]
     links = companies["company_key"].map(linkedin_search_links)
     companies["linkedin_2nd_degree_search"] = links.str[0]
     companies["linkedin_1st_degree_search"] = links.str[1]

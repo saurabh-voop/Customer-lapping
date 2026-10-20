@@ -64,3 +64,16 @@ def test_tier_and_sector():
     assert tier_of("Co-Founder & CEO") == "2 - CEO / Founder / Owner / President / ED"
     assert tier_of("Head of Procurement").startswith("4")
     assert sector_of("Acme Gensets Pvt Ltd") == "Gensets / Engines"
+
+
+def test_clean_place_handles_aliases_and_damaged_names():
+    from warmpath.places import clean_place
+    assert clean_place("Bhavgar") == ("Bhavnagar", "Gujarat", "India")
+    assert clean_place("Pune, viman nagar") == ("Pune", "Maharashtra", "India")
+    assert clean_place("Bengaluru")[0] == "Bangalore"
+    assert clean_place("", "Tamil du") == ("", "Tamil Nadu", "India")
+    assert clean_place("Gujarat") == ("", "Gujarat", "India")
+    assert clean_place("NIL", "", "Kenya") == ("", "", "Kenya")
+    assert clean_place("8 min (2.4 km) via Hitech City Main Rd") == ("", "", "")
+    assert clean_place("Moradabad") == ("Moradabad", "", "India")
+    assert clean_place("Muzaffargar")[0] == "Muzaffarnagar"

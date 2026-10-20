@@ -25,9 +25,11 @@ ROLE_PATTERNS = [
     ("email", r"e-?mail", r"status|check"),
     ("phone", r"mob|tel|phone|contact number", None),
     ("linkedin", r"linkedin", None),
-    ("location", r"^location$|^city$|shipper city|^state$", None),
+    ("location", r"^location$|^city$|shipper city|^place$", None),
+    ("state", r"^state$|shipper state", None),
     ("country", r"country", None),
-    ("segment", r"segment|sector|^cat$|type / sector", None),
+    ("segment", r"segment|sector|type / sector", None),
+    ("category", r"^cat$|^category$", None),
     ("visited", r"visited", None),
     ("status", r"^status$|latest status|out-?co+me", None),
     ("owner", r"peers to|in charge|b/l name", None),
@@ -110,7 +112,7 @@ def load_workbook(path):
                 continue
             rec = {"source": path.name, "sheet": sheet, "row": r + 1, "company": company}
             for role in ("person", "designation", "email", "phone", "linkedin", "location",
-                         "country", "segment", "visited", "status", "owner"):
+                         "state", "country", "segment", "category", "visited", "status", "owner"):
                 rec[role] = _cell(row, mapping, role)
             rows.append(rec)
     return rows
@@ -172,7 +174,7 @@ def load_customers(folder):
         "designation": lambda s: max(s, key=lambda x: len(x or "")),
         "phone": lambda s: next((x for x in s if x), ""),
     })
-    for col in ("location", "segment", "visited", "status", "owner", "country"):
+    for col in ("location", "state", "segment", "category", "visited", "status", "owner", "country"):
         if col in people.columns:
             agg[col] = lambda s: next((x for x in s if isinstance(x, str) and x), "")
     merged = people.groupby("target_id", as_index=False, sort=False).agg(agg)
